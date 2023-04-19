@@ -12,10 +12,6 @@ source = Source.XTP
 sz_exchange = Exchange.SZE
 sh_exchange = Exchange.SSE
 
-current_path = os.path.dirname(os.path.abspath(__file__))
-filename = os.path.join(current_path, "grid_target.xlsx")
-
-
 class Stock:
     def __init__(self,strStockCode,strExchange,fInitBasisPrice,fSellPriceDelta,
                     fBuyPriceDelta,fPriceUpperBound,fPriceLowerBound,iAmountPerEntrust,
@@ -38,14 +34,9 @@ class Stock:
         self.isBuy = True
         self.index = index #用于记录在excel中的索引序号,快速保存该股票的最新交易价格
 
-isbuy_mutex=Lock()
-issell_mutex=Lock()
 
-buyAmount_mutex=Lock()
-sellAmount_mutex=Lock()
-
-def read_excel(context,sz,sh):
-    wb = openpyxl.load_workbook(filename) # 读取xlsx文件
+def read_excel(context, sz , sh ):
+    wb = openpyxl.load_workbook(context.filename) # 读取xlsx文件
     sheet1 = wb.active
     context.account = str(sheet1.cell(1,2).value)
     #context.log.info("the account is {}, its type is {}".format(context.account,type(context.account)))    
@@ -79,9 +70,10 @@ def pre_start(context):
     sh = []
     context.account = ""                  #added by shizhao on 20191125
     context.customized_trading_time_begin = convert_time_nano(context,"09:30:00")   #modified by shizhao on 20191202
-    context.customized_trading_time_end   = convert_time_nano(context,"14:56:59")   #modified by shizhao on 20191204    
-    
-    read_excel(context ,sz , sh)
+    context.customized_trading_time_end   = convert_time_nano(context,"22:56:59")   #modified by shizhao on 20191204    
+    current_path = context.getParamFileDir()
+    context.filename = os.path.join(current_path, "grid_target.xlsx")
+    read_excel(context ,sz , sh )
     context.log.info("sz:{}.".format(sz))
     context.log.info("sh:{}.".format(sh))
     context.log.info(context.stock_dict.keys())
@@ -110,12 +102,12 @@ def on_quote(context, quote):
         context.log.debug("instrument_id:{}, last_price:{}, bid_price[0]:{}, ask_price[0]:{}, fCurrBasisPrice:{}, upper_limit_price is {},lower_limit_price is {}".format(
                          quote.instrument_id, quote.last_price, quote.bid_price[0], quote.ask_price[0], stock.fCurrBasisPrice, quote.upper_limit_price, quote.lower_limit_price))
         if quote.last_price > stock.fCurrBasisPrice:#卖的可能
-            context.log.info("卖:instrument_id:{}               last_price:{}".format(quote.instrument_id, quote.last_price ))
-            context.log.info(quote.last_price - stock.fCurrBasisPrice)
-            context.log.info(stock.fCurrBasisPrice + stock.fSellPriceDelta <= stock.fPriceUpperBound)
-            context.log.info(stock.isSell)
-            context.log.info(stock.iSellAmount + stock.iAmountPerEntrust <= stock.iMaxSellAmount)
-            context.log.info(stock.iSellAmount+stock.iAmountPerEntrust-stock.iBuyAmount <= stock.iMaxNettingAmount)
+            # context.log.info("卖:instrument_id:{}               last_price:{}".format(quote.instrument_id, quote.last_price ))
+            # context.log.info(quote.last_price - stock.fCurrBasisPrice)
+            # context.log.info(stock.fCurrBasisPrice + stock.fSellPriceDelta <= stock.fPriceUpperBound)
+            # context.log.info(stock.isSell)
+            # context.log.info(stock.iSellAmount + stock.iAmountPerEntrust <= stock.iMaxSellAmount)
+            # context.log.info(stock.iSellAmount+stock.iAmountPerEntrust-stock.iBuyAmount <= stock.iMaxNettingAmount)
             
             #added by shizhao on 20191130
             rate_of_price_increase = quote.last_price/stock.fCurrBasisPrice - 1.0
@@ -133,20 +125,16 @@ def on_quote(context, quote):
                                  quote.lower_limit_price, stock.iSellAmount, stock.iAmountPerEntrust, stock.iMaxSellAmount, 
                                  stock.iBuyAmount, stock.iMaxNettingAmount))  #modified by shizhao on 20191217
                 if order_id > 0:###已经考虑到报单错误或者交易所拒单的情况
-                    sellAmount_mutex.acquire()
                     stock.iSellAmount = stock.iSellAmount + stock.iAmountPerEntrust*multiple
-                    sellAmount_mutex.release()
-                    issell_mutex.acquire()
                     stock.isSell = False
-                    issell_mutex.release()
         
         elif quote.last_price < stock.fCurrBasisPrice:#买的可能
-            context.log.info("买:instrument_id:{}               last_price:{}".format(quote.instrument_id, quote.last_price ))
-            context.log.info(stock.fCurrBasisPrice -quote.last_price >= stock.fBuyPriceDelta)
-            context.log.info(stock.fCurrBasisPrice - stock.fBuyPriceDelta >= stock.fPriceLowerBound)
-            context.log.info(stock.isBuy)
-            context.log.info(stock.iBuyAmount + stock.iAmountPerEntrust <= stock.iMaxBuyAmount)
-            context.log.info(stock.iBuyAmount+stock.iAmountPerEntrust-stock.iSellAmount <= stock.iMaxNettingAmount)
+            # context.log.info("买:instrument_id:{}               last_price:{}".format(quote.instrument_id, quote.last_price ))
+            # context.log.info(stock.fCurrBasisPrice -quote.last_price >= stock.fBuyPriceDelta)
+            # context.log.info(stock.fCurrBasisPrice - stock.fBuyPriceDelta >= stock.fPriceLowerBound)
+            # context.log.info(stock.isBuy)
+            # context.log.info(stock.iBuyAmount + stock.iAmountPerEntrust <= stock.iMaxBuyAmount)
+            # context.log.info(stock.iBuyAmount+stock.iAmountPerEntrust-stock.iSellAmount <= stock.iMaxNettingAmount)
             
             #added by shizhao on 20191130
             rate_of_price_decrease = 1.0 - quote.last_price/stock.fCurrBasisPrice
@@ -164,13 +152,8 @@ def on_quote(context, quote):
                                  quote.lower_limit_price, quote.upper_limit_price, stock.iBuyAmount, stock.iAmountPerEntrust, 
                                  stock.iMaxBuyAmount, stock.iSellAmount, stock.iMaxNettingAmount)) #modified by shizhao on 20191217
                 if order_id > 0:
-                    buyAmount_mutex.acquire()
                     stock.iBuyAmount = stock.iBuyAmount + stock.iAmountPerEntrust*multiple
-                    buyAmount_mutex.release()
-                    
-                    isbuy_mutex.acquire()
                     stock.isBuy = False
-                    isbuy_mutex.release()
         else:#no need any operation
             pass
 
@@ -184,49 +167,30 @@ def on_entrust(context, entrust):
     pass
 
 def on_order(context, order):
-    context.log.info('order received: [instrument_id]{} [volume]{} [price]{}'.format(
-                      order.instrument_id, order.volume, order.limit_price)) #added by shizhao on 20191217
+    context.log.info('order received: [instrument_id]{} [volume]{} [price]{}'.format(order.instrument_id, order.volume, order.limit_price)) #added by shizhao on 20191217
     key = order.instrument_id + order.exchange_id
     if key in context.stock_dict:
         stock = context.stock_dict[key]
         if wc_utils.is_final_status(order.status):
             if order.side == Side.Buy:
-                buyAmount_mutex.acquire()
                 stock.iBuyAmount = stock.iBuyAmount - order.volume_left
-                buyAmount_mutex.release()
             elif order.side == Side.Sell:
-                sellAmount_mutex.acquire()
                 stock.iSellAmount = stock.iSellAmount - order.volume_left
-                sellAmount_mutex.release()
             else:
                 pass
                     
             if order.volume_traded > 0:#有成交股数
-                wb = openpyxl.load_workbook(filename) # 读取xlsx文件
+                wb = openpyxl.load_workbook(context.filename) # 读取xlsx文件
                 ws = wb.active
                 stock.fCurrBasisPrice = order.amount_traded/order.volume_traded #修改最新成交价
                 ws.cell(stock.index,3).value = stock.fCurrBasisPrice
-                wb.save(filename)
+                wb.save(context.filename)
                 context.log.info("save new price because the final_status order,order_id is {}".format(order.order_id)) #modified by shizhao on 20191217
                 
-                issell_mutex.acquire()
-                stock.isSell = True
-                issell_mutex.release()
-                context.log.info("release the issell_mutex because the final_status order,order_id is {}".format(order.order_id)) #modified by shizhao on 20191217
-                
-                isbuy_mutex.acquire()
+                stock.isSell = True                
                 stock.isBuy = True
-                isbuy_mutex.release()
-                context.log.info("release the isbuy_mutex because the final_status order,order_id is {}".format(order.order_id))  #modified by shizhao on 20191217               
             else:#无成交股数
                 if order.side == Side.Buy:#需要修改下
-                    isbuy_mutex.acquire()
                     stock.isBuy = True
-                    isbuy_mutex.release()
-                    context.log.info("release the issell_mutex because the final_status order,order_id is {}".format(order.order_id)) #modified by shizhao on 20191217
                 else:#取消卖出
-                    issell_mutex.acquire()
-                    stock.isSell = True
-                    issell_mutex.release()
-                    context.log.info("release the isbuy_mutex because the final_status order,order_id is {}".format(order.order_id)) #modified by shizhao on 20191217
-                    
+                    stock.isSell = True                    
